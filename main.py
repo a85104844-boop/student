@@ -447,9 +447,14 @@ async def handle_match_action(callback: types.CallbackQuery):
     target_id = int(target_id)
     from_id = callback.from_user.id
     
-    is_match = save_action(from_id, target_id, action)
+        is_match = save_action(from_id, target_id, action)
     try:
         await callback.message.delete()
     except Exception:
         pass
-    
+
+    if is_match:
+        await callback.message.answer("🎉 Tabriklaymiz, o'zaro moslik (match) topildi!")
+    else:
+        await callback.message.answer("👍 Bahongiz saqlandi!")
+        
