@@ -383,21 +383,53 @@ async def handle_match_action(callback: types.CallbackQuery):
     is_match = save_action(from_id, target_id, action)
     await callback.message.delete()
     
+    # Agar like bosilgan bo'lsa va hali o'zaro match bo'lmasa - target userga xabar beramiz
+    if action == "like" and not is_match:
+        try:
+            await bot.send_message(
+                chat_id=target_id, 
+                text="🔔 **Kimdir sizga like bosdi!**\n\nKimligini bilish uchun 'Anketalarni ko'rish' tugmasini bosing 👀",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+    # Agar o'zaro match bo'lsa
     if is_match and action == "like":
-        candidate = get_user(target_id)
-        current = get_user(from_id)
+        candidate = get_user(target_id)  # target user ma'lumotlari
+        current = get_user(from_id)    # hozirgi user ma'lumotlari
         
-        await bot.send_message(
-            chat_id=from_id, 
-            text=f"🔥 **O'zaro moslik (Match)!**\n\nSiz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!",
-            parse_mode="Markdown"
+        # 1-userga 2-userning profilini yuboramiz
+        caption_for_current = (
+            f"🔥 **O'zaro moslik (Match)!**\n\n"
+            f"Siz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!\n\n"
+            f"🎓 Ism: {candidate[1]}\n"
+            f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
+            f"📌 Maqsad: {candidate[6]}\n"
+            f"📝 Bio: {candidate[7]}\n\n"
+            f"💬 Bog'lanish: [Profilga o'tish](tg://user?id={target_id})"
         )
-        await bot.send_message(
-            chat_id=target_id, 
-            text=f"🔥 **O'zaro moslik (Match)!**\n\nSiz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!",
-            parse_mode="Markdown"
+        try:
+            await bot.send_photo(chat_id=from_id, photo=candidate[8], caption=caption_for_current, parse_mode="Markdown")
+        except Exception:
+            pass
+
+        # 2-userga 1-userning profilini yuboramiz
+        caption_for_target = (
+            f"🔥 **O'zaro moslik (Match)!**\n\n"
+            f"Siz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!\n\n"
+            f"🎓 Ism: {current[1]}\n"
+            f"🏛 Universitet: {current[4]} ({current[5]})\n"
+            f"📌 Maqsad: {current[6]}\n"
+            f"📝 Bio: {current[7]}\n\n"
+            f"💬 Bog'lanish: [Profilga o'tish](tg://user?id={from_id})"
         )
+        try:
+            await bot.send_photo(chat_id=target_id, photo=current[8], caption=caption_for_target, parse_mode="Markdown")
+        except Exception:
+            pass
         
+    # Keyingi anketani ko'rsatish
     user = get_user(from_id)
     next_candidate = get_next_candidate(from_id, user[3])
     
@@ -439,4 +471,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-                                                                              
+    
