@@ -10,16 +10,14 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from aiohttp import web
 
-# Logging
 logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID_RAW = os.environ.get("ADMIN_ID")
 
 if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN topilmadi! Render Environment Variables bo'limini tekshiring.")
+    raise ValueError("BOT_TOKEN topilmadi!")
 
-# Admin ID ni xavfsiz aylantirish
 try:
     ADMIN_ID = int(ADMIN_ID_RAW) if ADMIN_ID_RAW else None
 except ValueError:
@@ -35,6 +33,7 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY,
+            full_name TEXT,
             gender TEXT,
             target_gender TEXT,
             university TEXT,
@@ -45,18 +44,26 @@ def init_db():
             is_approved INTEGER DEFAULT 0
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS likes (
+            from_user INTEGER,
+            to_user INTEGER,
+            action TEXT,
+            PRIMARY KEY (from_user, to_user)
+        )
+    """)
     conn.commit()
     conn.close()
 
 init_db()
 
-def save_user(user_id, data):
+def save_user(user_id, full_name, data):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT OR REPLACE INTO users (user_id, gender, target_gender, university, course, purpose, bio, photo_id, is_approved)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-    """, (user_id, data['gender'], data['target_gender'], data['university'], data['course'], data['purpose'], data['bio'], data['photo_id']))
+        INSERT OR REPLACE INTO users (user_id, full_name, gender, target_gender, university, course, purpose, bio, photo_id, is_approved)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    """, (user_id, full_name, data['gender'], data['target_gender'], data['university'], data['course'], data['purpose'], data['bio'], data['photo_id']))
     conn.commit()
     conn.close()
 
@@ -67,11 +74,60 @@ def approve_user_in_db(user_id):
     conn.commit()
     conn.close()
 
-# Main menu keyboard
-def get_main_keyboard():
+def get_user(user_id):
+    conn = sqlite3.connect("students.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
+def get_next_candidate(user_id, target_gender):
+    conn = sqlite3.connect("students.db")
+    cursor = conn.cursor()
+    
+    # Farqi yo'q bo'lsa barcha jinsdagi tasdiqlangan talabalar
+    if target_gender == "Farqi yo'q":
+        cursor.execute("""
+            SELECT * FROM users 
+            WHERE is_approved = 1 
+              AND user_id != ? 
+              AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
+            ORDER BY RANDOM() LIMIT 1
+        """, (user_id, user_id))
+    else:
+        # Yigitlar yoki Qizlar tanlangan bo'lsa
+        mapped_gender = "Yigit" if "Yigit" in target_gender else "Qiz"
+        cursor.execute("""
+            SELECT * FROM users 
+            WHERE is_approved = 1 
+              AND user_id != ? 
+              AND gender = ?
+              AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
+            ORDER BY RANDOM() LIMIT 1
+        """, (user_id, mapped_gender, user_id))
+        
+    candidate = cursor.fetchone()
+    conn.close()
+    return candidate
+
+def save_action(from_user, to_user, action):
+    conn = sqlite3.connect("students.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO likes (from_user, to_user, action) VALUES (?, ?, ?)", (from_user, to_user, action))
+    conn.commit()
+    
+    # O'zaro Like bormi tekshirish
+    cursor.execute("SELECT action FROM likes WHERE from_user = ? AND to_user = ?", (to_user, from_user))
+    match = cursor.fetchone()
+    conn.close()
+    return match and match[0] == "like"
+
+# ==================== KEYBOARDS ====================
+def main_menu_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔍 Anketalarni ko'rish"), KeyboardButton(text="👤 Im im profilim")]
+            [KeyboardButton(text="🔍 Anketalarni ko'rish"), KeyboardButton(text="👤 Mening profilim")]
         ],
         resize_keyboard=True
     )
@@ -92,6 +148,12 @@ class Registration(StatesGroup):
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
+    user = get_user(message.from_user.id)
+    
+    if user and user[9] == 1:  # Agar allaqachon tasdiqlangan bo'lsa
+        await message.answer("Asosiy menyu:", reply_markup=main_menu_kb())
+        return
+
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="Yigit"), KeyboardButton(text="Qiz")]],
         resize_keyboard=True,
@@ -175,12 +237,10 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
     verify_photo_id = message.photo[-1].file_id
     data = await state.get_data()
     
-    # Bazaga saqlaymiz
-    save_user(message.from_user.id, data)
+    save_user(message.from_user.id, message.from_user.full_name, data)
     
-    await message.answer("Anketangiz adminga yuborildi. Tasdiqlangach xabar beramiz!", reply_markup=get_main_keyboard())
+    await message.answer("Anketangiz adminga yuborildi. Tasdiqlangach xabar beramiz!", reply_markup=ReplyKeyboardRemove())
     
-    # Adminga yuborish
     if ADMIN_ID:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -190,7 +250,7 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
         ])
         
         caption = (
-            f"🆕 **Yangi anketa!**\n\n"
+            f"🆕 Yangi anketa!\n\n"
             f"👤 ID: {message.from_user.id}\n"
             f"👤 Ism: {message.from_user.full_name}\n"
             f"🔹 Jinsi: {data['gender']}\n"
@@ -201,9 +261,7 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
         )
         
         try:
-            # Anketa rasmi va ma'lumotlari
             await bot.send_photo(chat_id=ADMIN_ID, photo=data['photo_id'], caption=caption)
-            # Selfi verifikatsiya rasmi
             await bot.send_photo(
                 chat_id=ADMIN_ID, 
                 photo=verify_photo_id, 
@@ -211,7 +269,7 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
                 reply_markup=admin_kb
             )
         except Exception as e:
-            logging.error(f"Adminga xabar yuborishda xato: {e}")
+            logging.error(f"Adminga xatolik: {e}")
             
     await state.clear()
 
@@ -223,24 +281,124 @@ async def approve_user(callback: types.CallbackQuery):
     approve_user_in_db(user_id)
     
     try:
-        await bot.send_message(chat_id=user_id, text="🎉 Tabriklaymiz! Anketangiz tasdiqlandi. Endi botdan foydalanishingiz mumkin.", reply_markup=get_main_keyboard())
+        await bot.send_message(
+            chat_id=user_id, 
+            text="🎉 Tabriklaymiz! Anketangiz tasdiqlandi. Quyidagi menyu orqali anketalarni ko'rishingiz mumkin:", 
+            reply_markup=main_menu_kb()
+        )
     except Exception:
         pass
         
-    await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n✅ **TASDIQLANDI**")
+    await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n✅ TASDIQLANDI")
     await callback.answer("Foydalanuvchi tasdiqlandi!")
 
 @dp.callback_query(F.data.startswith("reject_"))
 async def reject_user(callback: types.CallbackQuery):
     user_id = int(callback.data.split("_")[1])
-    
     try:
         await bot.send_message(chat_id=user_id, text="❌ Afsuski, anketangiz admin tomonidan rad etildi. Qaytadan /start bosing.")
     except Exception:
         pass
         
-    await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n❌ **RAD ETILDI**")
+    await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n❌ RAD ETILDI")
     await callback.answer("Anketa rad etildi!")
+
+# ==================== PROFILE & MATCHING ====================
+
+@dp.message(F.text == "👤 Mening profilim")
+async def show_my_profile(message: types.Message):
+    user = get_user(message.from_user.id)
+    if not user:
+        await message.answer("Siz hali ro'yxatdan o'tmadingiz. /start bosing.")
+        return
+        
+    status = "✅ Tasdiqlangan" if user[9] == 1 else "⏳ Kutilmoqda"
+    caption = (
+        f"📋 **Sizning profilingiz:**\n\n"
+        f"👤 Ism: {user[1]}\n"
+        f"🔹 Jinsingiz: {user[2]}\n"
+        f"🎯 Qidiryapsiz: {user[3]}\n"
+        f"🎓 Universitet: {user[4]} ({user[5]})\n"
+        f"📌 Maqsad: {user[6]}\n"
+        f"📝 Bio: {user[7]}\n"
+        f"Holat: {status}"
+    )
+    await message.answer_photo(photo=user[8], caption=caption, parse_mode="Markdown")
+
+@dp.message(F.text == "🔍 Anketalarni ko'rish")
+async def browse_candidates(message: types.Message):
+    user = get_user(message.from_user.id)
+    if not user or user[9] != 1:
+        await message.answer("Anketalarni ko'rish uchun avval profilingiz admin tomonidan tasdiqlanishi kerak.")
+        return
+        
+    candidate = get_next_candidate(message.from_user.id, user[3])
+    if not candidate:
+        await message.answer("Hozircha sizga mos yangi anketalar mavjud emas. Birozdan so'ng qayta urinib ko'ring!")
+        return
+        
+    match_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{candidate[0]}"),
+            InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{candidate[0]}")
+        ]
+    ])
+    
+    caption = (
+        f"🎓 **{candidate[1]}**\n\n"
+        f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
+        f"🎯 Maqsad: {candidate[6]}\n"
+        f"📝 Bio: {candidate[7]}"
+    )
+    await message.answer_photo(photo=candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
+
+@dp.callback_query(F.data.startswith("act_"))
+async def handle_match_action(callback: types.CallbackQuery):
+    _, action, target_id = callback.data.split("_")
+    target_id = int(target_id)
+    from_id = callback.from_user.id
+    
+    is_match = save_action(from_id, target_id, action)
+    await callback.message.delete()
+    
+    if is_match and action == "like":
+        # Ikkala foydalanuvchiga xabar berish
+        candidate = get_user(target_id)
+        current = get_user(from_id)
+        
+        await bot.send_message(
+            chat_id=from_id, 
+            text=f"🔥 **O'zaro moslik (Match)!**\n\nSiz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!",
+            parse_mode="Markdown"
+        )
+        await bot.send_message(
+            chat_id=target_id, 
+            text=f"🔥 **O'zaro moslik (Match)!**\n\nSiz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!",
+            parse_mode="Markdown"
+        )
+        
+    # Keyingi anketani ko'rsatish
+    user = get_user(from_id)
+    next_candidate = get_next_candidate(from_id, user[3])
+    
+    if next_candidate:
+        match_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{next_candidate[0]}"),
+                InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{next_candidate[0]}")
+            ]
+        ])
+        caption = (
+            f"🎓 **{next_candidate[1]}**\n\n"
+            f"🏛 Universitet: {next_candidate[4]} ({next_candidate[5]})\n"
+            f"🎯 Maqsad: {next_candidate[6]}\n"
+            f"📝 Bio: {next_candidate[7]}"
+        )
+        await callback.message.answer_photo(photo=next_candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
+    else:
+        await callback.message.answer("Boshqa yangi anketalar qolmadi!")
+    
+    await callback.answer()
 
 # ==================== HEALTH CHECK WEB SERVER ====================
 async def handle(request):
@@ -261,4 +419,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
+            
