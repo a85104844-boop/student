@@ -453,17 +453,3 @@ async def handle_match_action(callback: types.CallbackQuery):
     except Exception:
         pass
     
-    if action == "like" and not is_match:
-        try:
-            await bot.send_message(chat_id=target_id, text="🔔 **Kimdir sizga like bosdi!** 👀", parse_mode="Markdown")
-        except Exception:
-            pass
-
-            if is_match and action == "like":
-        try:
-            await bot.send_message(chat_id=target_id, text="🎉 Sizda yangi moslik bor!")
-        except Exception:
-            pass
-            
-            
-        
