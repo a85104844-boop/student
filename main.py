@@ -41,7 +41,8 @@ def init_db():
             purpose TEXT,
             bio TEXT,
             photo_id TEXT,
-            is_approved INTEGER DEFAULT 0
+            is_approved INTEGER DEFAULT 0,
+            is_active INTEGER DEFAULT 1
         )
     """)
     cursor.execute("""
@@ -61,8 +62,8 @@ def save_user(user_id, data):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT OR REPLACE INTO users (user_id, full_name, gender, target_gender, university, course, purpose, bio, photo_id, is_approved)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        INSERT OR REPLACE INTO users (user_id, full_name, gender, target_gender, university, course, purpose, bio, photo_id, is_approved, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1)
     """, (user_id, data['name'], data['gender'], data['target_gender'], data['university'], data['course'], data['purpose'], data['bio'], data['photo_id']))
     conn.commit()
     conn.close()
@@ -70,7 +71,7 @@ def save_user(user_id, data):
 def approve_user_in_db(user_id):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET is_approved = 1 WHERE user_id = ?", (user_id,))
+    cursor.execute("UPDATE users SET is_approved = 1, is_active = 1 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
 
@@ -82,6 +83,21 @@ def get_user(user_id):
     conn.close()
     return row
 
+def update_user_status(user_id, is_active):
+    conn = sqlite3.connect("students.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET is_active = ? WHERE user_id = ?", (is_active, user_id))
+    conn.commit()
+    conn.close()
+
+def delete_user_from_db(user_id):
+    conn = sqlite3.connect("students.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+    cursor.execute("DELETE FROM likes WHERE from_user = ? OR to_user = ?", (user_id, user_id))
+    conn.commit()
+    conn.close()
+
 def get_next_candidate(user_id, target_gender):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
@@ -90,6 +106,7 @@ def get_next_candidate(user_id, target_gender):
         cursor.execute("""
             SELECT * FROM users 
             WHERE is_approved = 1 
+              AND is_active = 1
               AND user_id != ? 
               AND gender = 'Yigit'
               AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
@@ -99,6 +116,7 @@ def get_next_candidate(user_id, target_gender):
         cursor.execute("""
             SELECT * FROM users 
             WHERE is_approved = 1 
+              AND is_active = 1
               AND user_id != ? 
               AND gender = 'Qiz'
               AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
@@ -108,6 +126,7 @@ def get_next_candidate(user_id, target_gender):
         cursor.execute("""
             SELECT * FROM users 
             WHERE is_approved = 1 
+              AND is_active = 1
               AND user_id != ? 
               AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
             ORDER BY RANDOM() LIMIT 1
@@ -137,12 +156,52 @@ def main_menu_kb():
         resize_keyboard=True
     )
 
+def universities_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="TATU", callback_data="uni_TATU"),
+            InlineKeyboardButton(text="O'zMU", callback_data="uni_UzMU")
+        ],
+        [
+            InlineKeyboardButton(text="TDTU (Politeh)", callback_data="uni_TDTU"),
+            InlineKeyboardButton(text="TDIU (Narxoz)", callback_data="uni_TDIU")
+        ],
+        [
+            InlineKeyboardButton(text="TDYU (Yuridik)", callback_data="uni_TDYU"),
+            InlineKeyboardButton(text="TMI (Moliya)", callback_data="uni_TMI")
+        ],
+        [
+            InlineKeyboardButton(text="TDPU (Pedagogika)", callback_data="uni_TDPU"),
+            InlineKeyboardButton(text="TDSI (Stomatologiya)", callback_data="uni_TDSI")
+        ],
+        [
+            InlineKeyboardButton(text="JIDU", callback_data="uni_JIDU"),
+            InlineKeyboardButton(text="O'zJOKU", callback_data="uni_UzJOKU")
+        ],
+        [
+            InlineKeyboardButton(text="TIIIMX (Irrigatsiya)", callback_data="uni_Irrigatsiya"),
+            InlineKeyboardButton(text="Farmatsevtika instituti", callback_data="uni_Farmi")
+        ],
+        [
+            InlineKeyboardButton(text="TAQI (Arxitektura)", callback_data="uni_TAQI"),
+            InlineKeyboardButton(text="TAYI (Transport/Avto)", callback_data="uni_TAYI")
+        ],
+        [
+            InlineKeyboardButton(text="O'XIA (Islom akademiya)", callback_data="uni_OXIA"),
+            InlineKeyboardButton(text="TTA / TSDI", callback_data="uni_TTA")
+        ],
+        [
+            InlineKeyboardButton(text="✏️ Boshqa universitet", callback_data="uni_other")
+        ]
+    ])
+
 # ==================== FSM STATES ====================
 class Registration(StatesGroup):
     name = State()
     gender = State()
     target_gender = State()
     university = State()
+    custom_university = State()
     course = State()
     purpose = State()
     bio = State()
@@ -188,12 +247,41 @@ async def process_gender(message: types.Message, state: FSMContext):
 @dp.message(Registration.target_gender)
 async def process_target_gender(message: types.Message, state: FSMContext):
     await state.update_data(target_gender=message.text)
-    await message.answer("Qaysi Universitetda o'qiysiz? (masalan: TDTU, TATU, NUUz)", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Qaysi Universitetda o'qiysiz? Quyidagilardan birini tanlang:", reply_markup=universities_kb())
     await state.set_state(Registration.university)
 
-@dp.message(Registration.university)
-async def process_university(message: types.Message, state: FSMContext):
-    await state.update_data(university=message.text)
+@dp.callback_query(F.data.startswith("uni_"), Registration.university)
+async def process_university_callback(callback: types.CallbackQuery, state: FSMContext):
+    uni_code = callback.data.split("_")[1]
+    
+    if uni_code == "other":
+        await callback.message.edit_text("Universitetingiz nomini matn ko'rinishida yozib yuboring:")
+        await state.set_state(Registration.custom_university)
+        await callback.answer()
+        return
+
+    uni_names = {
+        "TATU": "TATU",
+        "UzMU": "O'zMU",
+        "TDTU": "TDTU",
+        "TDIU": "TDIU",
+        "TDYU": "TDYU",
+        "TMI": "TMI",
+        "TDPU": "TDPU",
+        "TDSI": "TDSI",
+        "JIDU": "JIDU",
+        "UzJOKU": "O'zJOKU",
+        "Irrigatsiya": "TIIIMX",
+        "Farmi": "Farmatsevtika instituti",
+        "TAQI": "TAQI",
+        "TAYI": "TAYI",
+        "OXIA": "O'XIA",
+        "TTA": "TTA"
+    }
+    selected_uni = uni_names.get(uni_code, "Boshqa")
+    await state.update_data(university=selected_uni)
+    
+    await callback.message.delete()
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")],
@@ -203,7 +291,25 @@ async def process_university(message: types.Message, state: FSMContext):
         resize_keyboard=True,
         one_time_keyboard=True
     )
-    await message.answer("Nechanchi kursda o'qiysiz?", reply_markup=kb)
+    await callback.message.answer(f"Tanlangan OTM: <b>{selected_uni}</b>\n\nNechanchi kursda o'qiysiz?", reply_markup=kb, parse_mode="HTML")
+    await state.set_state(Registration.course)
+    await callback.answer()
+
+@dp.message(Registration.custom_university)
+async def process_custom_university(message: types.Message, state: FSMContext):
+    uni_name = message.text.strip()
+    await state.update_data(university=uni_name)
+    
+    kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")],
+            [KeyboardButton(text="3-kurs"), KeyboardButton(text="4-kurs")],
+            [KeyboardButton(text="Magistr")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+    await message.answer(f"Universitet: <b>{uni_name}</b>\n\nNechanchi kursda o'qiysiz?", reply_markup=kb, parse_mode="HTML")
     await state.set_state(Registration.course)
 
 @dp.message(Registration.course)
@@ -315,7 +421,7 @@ async def reject_user(callback: types.CallbackQuery):
     await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n❌ RAD ETILDI")
     await callback.answer("Anketa rad etildi!")
 
-# ==================== PROFILE & MATCHING ====================
+# ==================== PROFILE & SETTINGS ====================
 
 @dp.message(F.text == "👤 Mening profilim")
 async def show_my_profile(message: types.Message):
@@ -324,7 +430,9 @@ async def show_my_profile(message: types.Message):
         await message.answer("Siz hali ro'yxatdan o'tmadingiz. /start bosing.")
         return
         
-    status = "✅ Tasdiqlangan" if user[9] == 1 else "⏳ Kutilmoqda"
+    status_text = "✅ Tasdiqlangan" if user[9] == 1 else "⏳ Kutilmoqda"
+    active_status = "🟢 Qidiruvda faol" if user[10] == 1 else "⏸ Muzlatilgan (Yashiringan)"
+    
     caption = (
         f"📋 **Sizning profilingiz:**\n\n"
         f"👤 Ism: {user[1]}\n"
@@ -333,10 +441,16 @@ async def show_my_profile(message: types.Message):
         f"🎓 Universitet: {user[4]} ({user[5]})\n"
         f"📌 Maqsad: {user[6]}\n"
         f"📝 Bio: {user[7]}\n"
-        f"Holat: {status}"
+        f"Holat: {status_text} | {active_status}"
     )
+    
+    pause_btn_text = "⏸ Anketani muzlatish" if user[10] == 1 else "▶️ Anketani yoqish"
+    pause_callback = "pause_profile" if user[10] == 1 else "activate_profile"
+
     edit_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Anketani qayta to'ldirish", callback_data="re_register")]
+        [InlineKeyboardButton(text="🔄 Anketani qayta to'ldirish", callback_data="re_register")],
+        [InlineKeyboardButton(text=pause_btn_text, callback_data=pause_callback)],
+        [InlineKeyboardButton(text="❌ Anketani o'chirish", callback_data="delete_profile")]
     ])
     await message.answer_photo(photo=user[8], caption=caption, reply_markup=edit_kb, parse_mode="Markdown")
 
@@ -347,11 +461,36 @@ async def handle_re_register(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(Registration.name)
     await callback.answer()
 
+@dp.callback_query(F.data == "pause_profile")
+async def handle_pause(callback: types.CallbackQuery):
+    update_user_status(callback.from_user.id, 0)
+    await callback.answer("Anketangiz muzlatildi (boshqalarga ko'rinmaydi).")
+    await callback.message.delete()
+    await show_my_profile(callback.message)
+
+@dp.callback_query(F.data == "activate_profile")
+async def handle_activate(callback: types.CallbackQuery):
+    update_user_status(callback.from_user.id, 1)
+    await callback.answer("Anketangiz faollashdi!")
+    await callback.message.delete()
+    await show_my_profile(callback.message)
+
+@dp.callback_query(F.data == "delete_profile")
+async def handle_delete(callback: types.CallbackQuery):
+    delete_user_from_db(callback.from_user.id)
+    await callback.message.delete()
+    await callback.message.answer("Anketangiz o'chirib yuborildi. Qaytadan boshlash uchun /start bosing.", reply_markup=ReplyKeyboardRemove())
+    await callback.answer()
+
 @dp.message(F.text == "🔍 Anketalarni ko'rish")
 async def browse_candidates(message: types.Message):
     user = get_user(message.from_user.id)
     if not user or user[9] != 1:
         await message.answer("Anketalarni ko'rish uchun avval profilingiz admin tomonidan tasdiqlanishi kerak.")
+        return
+        
+    if user[10] == 0:
+        await message.answer("Sizning anketangiz muzlatilgan. Anketalarni ko'rish uchun avval profilingizdan uni yoqing.")
         return
         
     candidate = get_next_candidate(message.from_user.id, user[3])
@@ -384,91 +523,4 @@ async def handle_match_action(callback: types.CallbackQuery):
     
     try:
         await callback.message.delete()
-    except Exception:
-        pass
-    
-    if action == "like" and not is_match:
-        try:
-            await bot.send_message(
-                chat_id=target_id, 
-                text="🔔 **Kimdir sizga like bosdi!**\n\nKimligini bilish uchun 'Anketalarni ko'rish' tugmasini bosing 👀",
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
-
-    if is_match and action == "like":
-        candidate = get_user(target_id)
-        current = get_user(from_id)
-        
-        # 1-foydalanuvchiga match xabari (Ism ustiga bosganda chat ochiladigan qilib mention qilamiz)
-        caption_for_current = (
-            f"🔥 **O'zaro moslik (Match)!**\n\n"
-            f"Siz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!\n\n"
-            f"🎓 Ism: [{candidate[1]}](tg://user?id={target_id})\n"
-            f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
-            f"📌 Maqsad: {candidate[6]}\n"
-            f"📝 Bio: {candidate[7]}\n\n"
-            f"💬 Yozish uchun yuqoridagi ism ustiga bosing!"
-        )
-        try:
-            await bot.send_photo(chat_id=from_id, photo=candidate[8], caption=caption_for_current, parse_mode="Markdown")
-        except Exception:
-            pass
-
-        # 2-foydalanuvchiga match xabari
-        caption_for_target = (
-            f"🔥 **O'zaro moslik (Match)!**\n\n"
-            f"Siz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!\n\n"
-            f"🎓 Ism: [{current[1]}](tg://user?id={from_id})\n"
-            f"🏛 Universitet: {current[4]} ({current[5]})\n"
-            f"📌 Maqsad: {current[6]}\n"
-            f"📝 Bio: {current[7]}\n\n"
-            f"💬 Yozish uchun yuqoridagi ism ustiga bosing!"
-        )
-        try:
-            await bot.send_photo(chat_id=target_id, photo=current[8], caption=caption_for_target, parse_mode="Markdown")
-        except Exception:
-            pass
-        
-    user = get_user(from_id)
-    next_candidate = get_next_candidate(from_id, user[3])
-    
-    if next_candidate:
-        match_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{next_candidate[0]}"),
-                InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{next_candidate[0]}")
-            ]
-        ])
-        caption = (
-            f"🎓 **{next_candidate[1]}**\n\n"
-            f"🏛 Universitet: {next_candidate[4]} ({next_candidate[5]})\n"
-            f"🎯 Maqsad: {next_candidate[6]}\n"
-            f"📝 Bio: {next_candidate[7]}"
-        )
-        await bot.send_photo(chat_id=from_id, photo=next_candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
-    else:
-        await bot.send_message(chat_id=from_id, text="Boshqa yangi anketalar qolmadi!")
-    
-    await callback.answer()
-
-# ==================== HEALTH CHECK WEB SERVER ====================
-async def handle(request):
-    return web.Response(text="Bot runs 24/7 on Render!")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
-async def main():
-    asyncio.create_task(start_web_server())
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+except 
