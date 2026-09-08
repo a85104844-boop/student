@@ -250,13 +250,8 @@ async def process_target_gender(message: types.Message, state: FSMContext):
     await message.answer("Qaysi Universitetda o'qiysiz? Quyidagilardan birini tanlang:", reply_markup=universities_kb())
     await state.set_state(Registration.university)
 
-@dp.callback_query(F.data.startswith("uni_"))
+@dp.callback_query(Registration.university, F.data.startswith("uni_"))
 async def process_university_callback(callback: types.CallbackQuery, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state != Registration.university.state:
-        await callback.answer()
-        return
-
     uni_code = callback.data.split("_")[1]
     
     if uni_code == "other":
@@ -529,4 +524,8 @@ async def browse_candidates(message: types.Message):
 
 @dp.callback_query(F.data.startswith("act_"))
 async def handle_match_action(callback: types.CallbackQuery):
-    _,
+    _, action, target_id = callback.data.split("_")
+    target_id = int(target_id)
+    from_id = callback.from_user.id
+    
+    
