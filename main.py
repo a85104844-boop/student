@@ -250,8 +250,13 @@ async def process_target_gender(message: types.Message, state: FSMContext):
     await message.answer("Qaysi Universitetda o'qiysiz? Quyidagilardan birini tanlang:", reply_markup=universities_kb())
     await state.set_state(Registration.university)
 
-@dp.callback_query(F.data.startswith("uni_"), Registration.university)
+@dp.callback_query(F.data.startswith("uni_"))
 async def process_university_callback(callback: types.CallbackQuery, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state != Registration.university.state:
+        await callback.answer()
+        return
+
     uni_code = callback.data.split("_")[1]
     
     if uni_code == "other":
@@ -281,7 +286,11 @@ async def process_university_callback(callback: types.CallbackQuery, state: FSMC
     selected_uni = uni_names.get(uni_code, "Boshqa")
     await state.update_data(university=selected_uni)
     
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
     kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")],
@@ -291,7 +300,12 @@ async def process_university_callback(callback: types.CallbackQuery, state: FSMC
         resize_keyboard=True,
         one_time_keyboard=True
     )
-    await callback.message.answer(f"Tanlangan OTM: <b>{selected_uni}</b>\n\nNechanchi kursda o'qiysiz?", reply_markup=kb, parse_mode="HTML")
+    await bot.send_message(
+        chat_id=callback.from_user.id,
+        text=f"Tanlangan OTM: <b>{selected_uni}</b>\n\nNechanchi kursda o'qiysiz?",
+        reply_markup=kb,
+        parse_mode="HTML"
+    )
     await state.set_state(Registration.course)
     await callback.answer()
 
@@ -515,12 +529,4 @@ async def browse_candidates(message: types.Message):
 
 @dp.callback_query(F.data.startswith("act_"))
 async def handle_match_action(callback: types.CallbackQuery):
-    _, action, target_id = callback.data.split("_")
-    target_id = int(target_id)
-    from_id = callback.from_user.id
-    
-    is_match = save_action(from_id, target_id, action)
-    
-    try:
-        await callback.message.delete()
-except 
+    _,
