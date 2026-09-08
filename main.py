@@ -227,7 +227,7 @@ async def cmd_stats(message: types.Message):
     )
     await message.answer(text, parse_mode="Markdown")
     
-async def cmd_stats(message: types.Message):
+
     if not ADMIN_ID or message.from_user.id != ADMIN_ID:
         return
     total, approved, boys, girls, active = get_stats()
@@ -274,7 +274,7 @@ async def process_university_callback(callback: types.CallbackQuery, state: FSMC
         "TATU": "TATU", "UzMU": "O'zMU", "TDTU": "TDTU", "TDIU": "TDIU",
         "TDYU": "TDYU", "TMI": "TMI", "TDPU": "TDPU", "TDSI": "TDSI",
         "JIDU": "JIDU", "UzJOKU": "O'zJOKU", "Irrigatsiya": "TIIIMX",
-        "Farmi": "Farmatsevtika instituti", "TAQI": "TAQI", "TAYI": "TAYI",
+        "Farmi": "Farmatsevtika instituti", "TAQU": "TAQU", "TAYU": "TAYU",
         "OXIA": "O'XIA", "TTA": "TTA"
     }
     selected_uni = uni_names.get(uni_code, "Boshqa")
