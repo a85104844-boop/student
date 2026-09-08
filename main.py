@@ -5,21 +5,21 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiohttp import web
 
-# Logging
+# Logging sozlamalari
 logging.basicConfig(level=logging.INFO)
 
-# Telegram Bot Token
-BOT_TOKEN = "7953282218:AAEP2wUjG0Kx2cWv2Zz7T3f_f5m58qZ0z58" # O'zingizning tokeningiz
+# Token kod ichida emas, Render Environment Variables bo'limidan xavfsiz olinadi
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# /start komandasi
+# /start buyrug'i uchun handler
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     await message.answer("Salom! Student Social Network botiga xush kelibsiz.")
 
-# Render port talabi uchun soxta Web-server (Port ping)
+# Render port talabi uchun soxta Web-server (Health check)
 async def handle(request):
     return web.Response(text="Bot is running!")
 
@@ -33,7 +33,7 @@ async def start_web_server():
     await site.start()
 
 async def main():
-    # Web server va Polling'ni bir vaqtda ishga tushirish
+    # Web-server va Polling jarayonlarini bir vaqtda yuritish
     asyncio.create_task(start_web_server())
     await dp.start_polling(bot)
 
