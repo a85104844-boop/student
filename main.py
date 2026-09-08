@@ -86,7 +86,25 @@ def get_next_candidate(user_id, target_gender):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
     
-    if target_gender == "Farqi yo'q":
+    if "Yigit" in target_gender:
+        cursor.execute("""
+            SELECT * FROM users 
+            WHERE is_approved = 1 
+              AND user_id != ? 
+              AND gender = 'Yigit'
+              AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
+            ORDER BY RANDOM() LIMIT 1
+        """, (user_id, user_id))
+    elif "Qiz" in target_gender:
+        cursor.execute("""
+            SELECT * FROM users 
+            WHERE is_approved = 1 
+              AND user_id != ? 
+              AND gender = 'Qiz'
+              AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
+            ORDER BY RANDOM() LIMIT 1
+        """, (user_id, user_id))
+    else:
         cursor.execute("""
             SELECT * FROM users 
             WHERE is_approved = 1 
@@ -94,16 +112,6 @@ def get_next_candidate(user_id, target_gender):
               AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
             ORDER BY RANDOM() LIMIT 1
         """, (user_id, user_id))
-    else:
-        mapped_gender = "Yigit" if "Yigit" in target_gender else "Qiz"
-        cursor.execute("""
-            SELECT * FROM users 
-            WHERE is_approved = 1 
-              AND user_id != ? 
-              AND gender = ?
-              AND user_id NOT IN (SELECT to_user FROM likes WHERE from_user = ?)
-            ORDER BY RANDOM() LIMIT 1
-        """, (user_id, mapped_gender, user_id))
         
     candidate = cursor.fetchone()
     conn.close()
@@ -431,4 +439,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-                       
+                                                                              
