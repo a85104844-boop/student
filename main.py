@@ -13,12 +13,17 @@ from aiohttp import web
 # Logging
 logging.basicConfig(level=logging.INFO)
 
-# Token va Admin ID (Admin ID ni o'zingizning Telegram ID ingizga almashtiring yoki Env ga qo'ying)
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "123456789")) # O'zingizning Telegram ID'ingizni kiriting
+ADMIN_ID_RAW = os.environ.get("ADMIN_ID")
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN topilmadi! Render Environment Variables bo'limini tekshiring.")
+
+# Admin ID ni xavfsiz aylantirish
+try:
+    ADMIN_ID = int(ADMIN_ID_RAW) if ADMIN_ID_RAW else None
+except ValueError:
+    ADMIN_ID = None
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -61,6 +66,15 @@ def approve_user_in_db(user_id):
     cursor.execute("UPDATE users SET is_approved = 1 WHERE user_id = ?", (user_id,))
     conn.commit()
     conn.close()
+
+# Main menu keyboard
+def get_main_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🔍 Anketalarni ko'rish"), KeyboardButton(text="👤 Im im profilim")]
+        ],
+        resize_keyboard=True
+    )
 
 # ==================== FSM STATES ====================
 class Registration(StatesGroup):
@@ -164,40 +178,41 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
     # Bazaga saqlaymiz
     save_user(message.from_user.id, data)
     
-    await message.answer("Anketangiz adminga yuborildi. Tasdiqlangach xabar beramiz!")
+    await message.answer("Anketangiz adminga yuborildi. Tasdiqlangach xabar beramiz!", reply_markup=get_main_keyboard())
     
     # Adminga yuborish
-    admin_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{message.from_user.id}"),
-            InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{message.from_user.id}")
-        ]
-    ])
-    
-    caption = (
-        f"🆕 **Yangi anketa!**\n\n"
-        f"👤 ID: {message.from_user.id}\n"
-        f"👤 Ism: {message.from_user.full_name}\n"
-        f"🔹 Jinsi: {data['gender']}\n"
-        f"🎯 Qidiryapti: {data['target_gender']}\n"
-        f"🎓 OTM: {data['university']} ({data['course']})\n"
-        f"📌 Maqsad: {data['purpose']}\n"
-        f"📝 Bio: {data['bio']}"
-    )
-    
-    try:
-        # Asosiy anketadagi rasm
-        await bot.send_photo(chat_id=ADMIN_ID, photo=data['photo_id'], caption=caption, parse_mode="Markdown")
-        # Selfi verifikatsiya rasmi
-        await bot.send_photo(
-            chat_id=ADMIN_ID, 
-            photo=verify_photo_id, 
-            caption=f"✌️ Selfi verifikatsiya (User ID: {message.from_user.id})", 
-            reply_markup=admin_kb
-        )
-    except Exception as e:
-        logging.error(f"Adminga xabar yuborishda xato: {e}")
+    if ADMIN_ID:
+        admin_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{message.from_user.id}"),
+                InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{message.from_user.id}")
+            ]
+        ])
         
+        caption = (
+            f"🆕 **Yangi anketa!**\n\n"
+            f"👤 ID: {message.from_user.id}\n"
+            f"👤 Ism: {message.from_user.full_name}\n"
+            f"🔹 Jinsi: {data['gender']}\n"
+            f"🎯 Qidiryapti: {data['target_gender']}\n"
+            f"🎓 OTM: {data['university']} ({data['course']})\n"
+            f"📌 Maqsad: {data['purpose']}\n"
+            f"📝 Bio: {data['bio']}"
+        )
+        
+        try:
+            # Anketa rasmi va ma'lumotlari
+            await bot.send_photo(chat_id=ADMIN_ID, photo=data['photo_id'], caption=caption)
+            # Selfi verifikatsiya rasmi
+            await bot.send_photo(
+                chat_id=ADMIN_ID, 
+                photo=verify_photo_id, 
+                caption=f"✌️ Selfi verifikatsiya (User ID: {message.from_user.id})", 
+                reply_markup=admin_kb
+            )
+        except Exception as e:
+            logging.error(f"Adminga xabar yuborishda xato: {e}")
+            
     await state.clear()
 
 # ==================== ADMIN CALLBACKS ====================
@@ -208,7 +223,7 @@ async def approve_user(callback: types.CallbackQuery):
     approve_user_in_db(user_id)
     
     try:
-        await bot.send_message(chat_id=user_id, text="🎉 Tabriklaymiz! Anketangiz tasdiqlandi. Endi botdan foydalanishingiz mumkin.")
+        await bot.send_message(chat_id=user_id, text="🎉 Tabriklaymiz! Anketangiz tasdiqlandi. Endi botdan foydalanishingiz mumkin.", reply_markup=get_main_keyboard())
     except Exception:
         pass
         
