@@ -383,7 +383,6 @@ async def handle_match_action(callback: types.CallbackQuery):
     is_match = save_action(from_id, target_id, action)
     await callback.message.delete()
     
-    # Agar like bosilgan bo'lsa va hali o'zaro match bo'lmasa - target userga xabar beramiz
     if action == "like" and not is_match:
         try:
             await bot.send_message(
@@ -394,42 +393,44 @@ async def handle_match_action(callback: types.CallbackQuery):
         except Exception:
             pass
 
-    # Agar o'zaro match bo'lsa
     if is_match and action == "like":
-        candidate = get_user(target_id)  # target user ma'lumotlari
-        current = get_user(from_id)    # hozirgi user ma'lumotlari
+        candidate = get_user(target_id)
+        current = get_user(from_id)
         
-        # 1-userga 2-userning profilini yuboramiz
+        # 1-foydalanuvchiga tugma orqali bog'lanish
+        btn_for_current = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💬 Yozish uchun o'tish", url=f"tg://user?id={target_id}")]
+        ])
         caption_for_current = (
             f"🔥 **O'zaro moslik (Match)!**\n\n"
-            f"Siz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!\n\n"
+            f"Siz va {candidate[1]} bir-biringizga like bosdingiz!\n\n"
             f"🎓 Ism: {candidate[1]}\n"
             f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
             f"📌 Maqsad: {candidate[6]}\n"
-            f"📝 Bio: {candidate[7]}\n\n"
-            f"💬 Bog'lanish: [Profilga o'tish](tg://user?id={target_id})"
+            f"📝 Bio: {candidate[7]}"
         )
         try:
-            await bot.send_photo(chat_id=from_id, photo=candidate[8], caption=caption_for_current, parse_mode="Markdown")
+            await bot.send_photo(chat_id=from_id, photo=candidate[8], caption=caption_for_current, reply_markup=btn_for_current, parse_mode="Markdown")
         except Exception:
             pass
 
-        # 2-userga 1-userning profilini yuboramiz
+        # 2-foydalanuvchiga tugma orqali bog'lanish
+        btn_for_target = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💬 Yozish uchun o'tish", url=f"tg://user?id={from_id}")]
+        ])
         caption_for_target = (
             f"🔥 **O'zaro moslik (Match)!**\n\n"
-            f"Siz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!\n\n"
+            f"Siz va {current[1]} bir-biringizga like bosdingiz!\n\n"
             f"🎓 Ism: {current[1]}\n"
             f"🏛 Universitet: {current[4]} ({current[5]})\n"
             f"📌 Maqsad: {current[6]}\n"
-            f"📝 Bio: {current[7]}\n\n"
-            f"💬 Bog'lanish: [Profilga o'tish](tg://user?id={from_id})"
+            f"📝 Bio: {current[7]}"
         )
         try:
-            await bot.send_photo(chat_id=target_id, photo=current[8], caption=caption_for_target, parse_mode="Markdown")
+            await bot.send_photo(chat_id=target_id, photo=current[8], caption=caption_for_target, reply_markup=btn_for_target, parse_mode="Markdown")
         except Exception:
             pass
         
-    # Keyingi anketani ko'rsatish
     user = get_user(from_id)
     next_candidate = get_next_candidate(from_id, user[3])
     
