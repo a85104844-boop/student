@@ -530,3 +530,92 @@ async def handle_match_action(callback: types.CallbackQuery):
     
     is_match = save_action(from_id, target_id, action)
     
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    if action == "like" and not is_match:
+        try:
+            await bot.send_message(
+                chat_id=target_id, 
+                text="🔔 **Kimdir sizga like bosdi!**\n\nKimligini bilish uchun 'Anketalarni ko'rish' tugmasini bosing 👀",
+                parse_mode="Markdown"
+            )
+        except Exception:
+            pass
+
+    if is_match and action == "like":
+        candidate = get_user(target_id)
+        current = get_user(from_id)
+        
+        caption_for_current = (
+            f"🔥 **O'zaro moslik (Match)!**\n\n"
+            f"Siz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!\n\n"
+            f"🎓 Ism: [{candidate[1]}](tg://user?id={target_id})\n"
+            f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
+            f"📌 Maqsad: {candidate[6]}\n"
+            f"📝 Bio: {candidate[7]}\n\n"
+            f"💬 Yozish uchun yuqoridagi ism ustiga bosing!"
+        )
+        try:
+            await bot.send_photo(chat_id=from_id, photo=candidate[8], caption=caption_for_current, parse_mode="Markdown")
+        except Exception:
+            pass
+
+        caption_for_target = (
+            f"🔥 **O'zaro moslik (Match)!**\n\n"
+            f"Siz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!\n\n"
+            f"🎓 Ism: [{current[1]}](tg://user?id={from_id})\n"
+            f"🏛 Universitet: {current[4]} ({current[5]})\n"
+            f"📌 Maqsad: {current[6]}\n"
+            f"📝 Bio: {current[7]}\n\n"
+            f"💬 Yozish uchun yuqoridagi ism ustiga bosing!"
+        )
+        try:
+            await bot.send_photo(chat_id=target_id, photo=current[8], caption=caption_for_target, parse_mode="Markdown")
+        except Exception:
+            pass
+        
+    user = get_user(from_id)
+    next_candidate = get_next_candidate(from_id, user[3])
+    
+    if next_candidate:
+        match_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{next_candidate[0]}"),
+                InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{next_candidate[0]}")
+            ]
+        ])
+        caption = (
+            f"🎓 **{next_candidate[1]}**\n\n"
+            f"🏛 Universitet: {next_candidate[4]} ({next_candidate[5]})\n"
+            f"🎯 Maqsad: {next_candidate[6]}\n"
+            f"📝 Bio: {next_candidate[7]}"
+        )
+        await bot.send_photo(chat_id=callback.message.chat.id, photo=next_candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
+    else:
+        await bot.send_message(chat_id=callback.message.chat.id, text="Boshqa yangi anketalar qolmadi!")
+    
+    await callback.answer()
+
+# ==================== HEALTH CHECK WEB SERVER ====================
+async def handle(request):
+    return web.Response(text="Bot runs 24/7 on Render!")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+async def main():
+    asyncio.create_task(start_web_server())
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+                                                                                      
