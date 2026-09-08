@@ -147,6 +147,22 @@ def save_action(from_user, to_user, action):
     conn.close()
     return match and match[0] == "like"
 
+def get_stats():
+    conn = sqlite3.connect("students.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    total = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users WHERE is_approved = 1")
+    approved = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users WHERE gender = 'Yigit'")
+    boys = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users WHERE gender = 'Qiz'")
+    girls = cursor.fetchone()[0]
+    cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1 AND is_approved = 1")
+    active = cursor.fetchone()[0]
+    conn.close()
+    return total, approved, boys, girls, active
+
 # ==================== KEYBOARDS ====================
 def main_menu_kb():
     return ReplyKeyboardMarkup(
@@ -158,41 +174,15 @@ def main_menu_kb():
 
 def universities_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="TATU", callback_data="uni_TATU"),
-            InlineKeyboardButton(text="O'zMU", callback_data="uni_UzMU")
-        ],
-        [
-            InlineKeyboardButton(text="TDTU (Politeh)", callback_data="uni_TDTU"),
-            InlineKeyboardButton(text="TDIU (Narxoz)", callback_data="uni_TDIU")
-        ],
-        [
-            InlineKeyboardButton(text="TDYU (Yuridik)", callback_data="uni_TDYU"),
-            InlineKeyboardButton(text="TMI (Moliya)", callback_data="uni_TMI")
-        ],
-        [
-            InlineKeyboardButton(text="TDPU (Pedagogika)", callback_data="uni_TDPU"),
-            InlineKeyboardButton(text="TDSI (Stomatologiya)", callback_data="uni_TDSI")
-        ],
-        [
-            InlineKeyboardButton(text="JIDU", callback_data="uni_JIDU"),
-            InlineKeyboardButton(text="O'zJOKU", callback_data="uni_UzJOKU")
-        ],
-        [
-            InlineKeyboardButton(text="TIIIMX (Irrigatsiya)", callback_data="uni_Irrigatsiya"),
-            InlineKeyboardButton(text="Farmatsevtika instituti", callback_data="uni_Farmi")
-        ],
-        [
-            InlineKeyboardButton(text="TAQI (Arxitektura)", callback_data="uni_TAQI"),
-            InlineKeyboardButton(text="TAYI (Transport/Avto)", callback_data="uni_TAYI")
-        ],
-        [
-            InlineKeyboardButton(text="O'XIA (Islom akademiya)", callback_data="uni_OXIA"),
-            InlineKeyboardButton(text="TTA / TSDI", callback_data="uni_TTA")
-        ],
-        [
-            InlineKeyboardButton(text="✏️ Boshqa universitet", callback_data="uni_other")
-        ]
+        [InlineKeyboardButton(text="TATU", callback_data="uni_TATU"), InlineKeyboardButton(text="O'zMU", callback_data="uni_UzMU")],
+        [InlineKeyboardButton(text="TDTU (Politeh)", callback_data="uni_TDTU"), InlineKeyboardButton(text="TDIU (Narxoz)", callback_data="uni_TDIU")],
+        [InlineKeyboardButton(text="TDYU (Yuridik)", callback_data="uni_TDYU"), InlineKeyboardButton(text="TMI (Moliya)", callback_data="uni_TMI")],
+        [InlineKeyboardButton(text="TDPU (Pedagogika)", callback_data="uni_TDPU"), InlineKeyboardButton(text="TDSI (Stomatologiya)", callback_data="uni_TDSI")],
+        [InlineKeyboardButton(text="JIDU", callback_data="uni_JIDU"), InlineKeyboardButton(text="O'zJOKU", callback_data="uni_UzJOKU")],
+        [InlineKeyboardButton(text="TIIIMX (Irrigatsiya)", callback_data="uni_Irrigatsiya"), InlineKeyboardButton(text="Farmatsevtika instituti", callback_data="uni_Farmi")],
+        [InlineKeyboardButton(text="TAQI (Arxitektura)", callback_data="uni_TAQI"), InlineKeyboardButton(text="TAYI (Transport/Avto)", callback_data="uni_TAYI")],
+        [InlineKeyboardButton(text="O'XIA (Islom akademiya)", callback_data="uni_OXIA"), InlineKeyboardButton(text="TTA / TSDI", callback_data="uni_TTA")],
+        [InlineKeyboardButton(text="✏️ Boshqa universitet", callback_data="uni_other")]
     ])
 
 # ==================== FSM STATES ====================
@@ -214,33 +204,38 @@ class Registration(StatesGroup):
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     user = get_user(message.from_user.id)
-    
     if user and user[9] == 1:
         await message.answer("Asosiy menyu:", reply_markup=main_menu_kb())
         return
-
     await message.answer("Salom! Student Social Network botiga xush kelibsiz.\n\nIsmingizni kiriting:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(Registration.name)
+
+@dp.message(Command("stats"))
+async def cmd_stats(message: types.Message):
+    if not ADMIN_ID or message.from_user.id != ADMIN_ID:
+        return
+    total, approved, boys, girls, active = get_stats()
+    text = (
+        f"📊 **Bot statistikasi:**\n\n"
+        f"👥 Jami ro'yxatdan o'tganlar: {total}\n"
+        f"✅ Tasdiqlanganlar: {approved}\n"
+        f"🟢 Hozir faol (qidiruvda): {active}\n"
+        f"👦 Yigitlar: {boys}\n"
+        f"👧 Qizlar: {girls}"
+    )
+    await message.answer(text, parse_mode="Markdown")
 
 @dp.message(Registration.name)
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Yigit"), KeyboardButton(text="Qiz")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Yigit"), KeyboardButton(text="Qiz")]], resize_keyboard=True, one_time_keyboard=True)
     await message.answer("Jinsingizni tanlang:", reply_markup=kb)
     await state.set_state(Registration.gender)
 
 @dp.message(Registration.gender)
 async def process_gender(message: types.Message, state: FSMContext):
     await state.update_data(gender=message.text)
-    kb = ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="Yigitlar"), KeyboardButton(text="Qizlar")], [KeyboardButton(text="Farqi yo'q")]],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
+    kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="Yigitlar"), KeyboardButton(text="Qizlar")], [KeyboardButton(text="Farqi yo'q")]], resize_keyboard=True, one_time_keyboard=True)
     await message.answer("Kimlar bilan tanishmoqchisiz?", reply_markup=kb)
     await state.set_state(Registration.target_gender)
 
@@ -253,7 +248,6 @@ async def process_target_gender(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("uni_"))
 async def process_university_callback(callback: types.CallbackQuery, state: FSMContext):
     uni_code = callback.data.split("_")[1]
-    
     if uni_code == "other":
         await callback.message.edit_text("Universitetingiz nomini matn ko'rinishida yozib yuboring:")
         await state.set_state(Registration.custom_university)
@@ -261,46 +255,24 @@ async def process_university_callback(callback: types.CallbackQuery, state: FSMC
         return
 
     uni_names = {
-        "TATU": "TATU",
-        "UzMU": "O'zMU",
-        "TDTU": "TDTU",
-        "TDIU": "TDIU",
-        "TDYU": "TDYU",
-        "TMI": "TMI",
-        "TDPU": "TDPU",
-        "TDSI": "TDSI",
-        "JIDU": "JIDU",
-        "UzJOKU": "O'zJOKU",
-        "Irrigatsiya": "TIIIMX",
-        "Farmi": "Farmatsevtika instituti",
-        "TAQI": "TAQI",
-        "TAYI": "TAYI",
-        "OXIA": "O'XIA",
-        "TTA": "TTA"
+        "TATU": "TATU", "UzMU": "O'zMU", "TDTU": "TDTU", "TDIU": "TDIU",
+        "TDYU": "TDYU", "TMI": "TMI", "TDPU": "TDPU", "TDSI": "TDSI",
+        "JIDU": "JIDU", "UzJOKU": "O'zJOKU", "Irrigatsiya": "TIIIMX",
+        "Farmi": "Farmatsevtika instituti", "TAQI": "TAQI", "TAYI": "TAYI",
+        "OXIA": "O'XIA", "TTA": "TTA"
     }
     selected_uni = uni_names.get(uni_code, "Boshqa")
     await state.update_data(university=selected_uni)
-    
     try:
         await callback.message.delete()
     except Exception:
         pass
 
     kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")],
-            [KeyboardButton(text="3-kurs"), KeyboardButton(text="4-kurs")],
-            [KeyboardButton(text="Magistr")]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
+        keyboard=[[KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")], [KeyboardButton(text="3-kurs"), KeyboardButton(text="4-kurs")], [KeyboardButton(text="Magistr")]],
+        resize_keyboard=True, one_time_keyboard=True
     )
-    await bot.send_message(
-        chat_id=callback.from_user.id,
-        text=f"Tanlangan OTM: <b>{selected_uni}</b>\n\nNechanchi kursda o'qiysiz?",
-        reply_markup=kb,
-        parse_mode="HTML"
-    )
+    await bot.send_message(chat_id=callback.from_user.id, text=f"Tanlangan OTM: <b>{selected_uni}</b>\n\nNechanchi kursda o'qiysiz?", reply_markup=kb, parse_mode="HTML")
     await state.set_state(Registration.course)
     await callback.answer()
 
@@ -308,15 +280,9 @@ async def process_university_callback(callback: types.CallbackQuery, state: FSMC
 async def process_custom_university(message: types.Message, state: FSMContext):
     uni_name = message.text.strip()
     await state.update_data(university=uni_name)
-    
     kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")],
-            [KeyboardButton(text="3-kurs"), KeyboardButton(text="4-kurs")],
-            [KeyboardButton(text="Magistr")]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
+        keyboard=[[KeyboardButton(text="1-kurs"), KeyboardButton(text="2-kurs")], [KeyboardButton(text="3-kurs"), KeyboardButton(text="4-kurs")], [KeyboardButton(text="Magistr")]],
+        resize_keyboard=True, one_time_keyboard=True
     )
     await message.answer(f"Universitet: <b>{uni_name}</b>\n\nNechanchi kursda o'qiysiz?", reply_markup=kb, parse_mode="HTML")
     await state.set_state(Registration.course)
@@ -325,12 +291,8 @@ async def process_custom_university(message: types.Message, state: FSMContext):
 async def process_course(message: types.Message, state: FSMContext):
     await state.update_data(course=message.text)
     kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Munosabat"), KeyboardButton(text="Do'stlashish")],
-            [KeyboardButton(text="Birga o'qish (Study Buddy)")]
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
+        keyboard=[[KeyboardButton(text="Munosabat"), KeyboardButton(text="Do'stlashish")], [KeyboardButton(text="Birga o'qish (Study Buddy)")], [KeyboardButton(text="Barchasi")]],
+        resize_keyboard=True, one_time_keyboard=True
     )
     await message.answer("Asosiy maqsadingiz nima?", reply_markup=kb)
     await state.set_state(Registration.purpose)
@@ -351,71 +313,36 @@ async def process_bio(message: types.Message, state: FSMContext):
 async def process_photo(message: types.Message, state: FSMContext):
     photo_id = message.photo[-1].file_id
     await state.update_data(photo_id=photo_id)
-    
-    await message.answer(
-        "Verifikatsiya bosqichi:\n\n"
-        "Soxta anketalarning oldini olish uchun, qo'lingiz bilan Victory (✌️) "
-        "ishorasini ko'rsatgan selfi rasmingizni yuboring."
-    )
+    await message.answer("Verifikatsiya bosqichi:\n\nSoxta anketalarning oldini olish uchun, qo'lingiz bilan Victory (✌️) ishorasini ko'rsatgan selfi rasmingizni yuboring.")
     await state.set_state(Registration.verification_photo)
 
 @dp.message(Registration.verification_photo, F.photo)
 async def process_verification_photo(message: types.Message, state: FSMContext):
     verify_photo_id = message.photo[-1].file_id
     data = await state.get_data()
-    
     save_user(message.from_user.id, data)
-    
     await message.answer("Anketangiz adminga yuborildi. Tasdiqlangach xabar beramiz!", reply_markup=ReplyKeyboardRemove())
     
     if ADMIN_ID:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{message.from_user.id}"),
-                InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{message.from_user.id}")
-            ]
+            [InlineKeyboardButton(text="✅ Tasdiqlash", callback_data=f"approve_{message.from_user.id}"), InlineKeyboardButton(text="❌ Rad etish", callback_data=f"reject_{message.from_user.id}")]
         ])
-        
-        caption = (
-            f"🆕 Yangi anketa!\n\n"
-            f"👤 ID: {message.from_user.id}\n"
-            f"👤 Ism: {data['name']}\n"
-            f"🔹 Jinsi: {data['gender']}\n"
-            f"🎯 Qidiryapti: {data['target_gender']}\n"
-            f"🎓 OTM: {data['university']} ({data['course']})\n"
-            f"📌 Maqsad: {data['purpose']}\n"
-            f"📝 Bio: {data['bio']}"
-        )
-        
+        caption = f"🆕 Yangi anketa!\n\n👤 ID: {message.from_user.id}\n👤 Ism: {data['name']}\n🔹 Jinsi: {data['gender']}\n🎯 Qidiryapti: {data['target_gender']}\n🎓 OTM: {data['university']} ({data['course']})\n📌 Maqsad: {data['purpose']}\n📝 Bio: {data['bio']}"
         try:
             await bot.send_photo(chat_id=ADMIN_ID, photo=data['photo_id'], caption=caption)
-            await bot.send_photo(
-                chat_id=ADMIN_ID, 
-                photo=verify_photo_id, 
-                caption=f"✌️ Selfi verifikatsiya (User ID: {message.from_user.id})", 
-                reply_markup=admin_kb
-            )
+            await bot.send_photo(chat_id=ADMIN_ID, photo=verify_photo_id, caption=f"✌️ Selfi verifikatsiya (User ID: {message.from_user.id})", reply_markup=admin_kb)
         except Exception as e:
             logging.error(f"Adminga xatolik: {e}")
-            
     await state.clear()
-
-# ==================== ADMIN CALLBACKS ====================
 
 @dp.callback_query(F.data.startswith("approve_"))
 async def approve_user(callback: types.CallbackQuery):
     user_id = int(callback.data.split("_")[1])
     approve_user_in_db(user_id)
-    
     try:
-        await bot.send_message(
-            chat_id=user_id, 
-            text="🎉 Tabriklaymiz! Anketangiz tasdiqlandi. Quyidagi menyu orqali anketalarni ko'rishingiz mumkin:", 
-            reply_markup=main_menu_kb()
-        )
+        await bot.send_message(chat_id=user_id, text="🎉 Tabriklaymiz! Anketangiz tasdiqlandi. Quyidagi menyu orqali anketalarni ko'rishingiz mumkin:", reply_markup=main_menu_kb())
     except Exception:
         pass
-        
     await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n✅ TASDIQLANDI")
     await callback.answer("Foydalanuvchi tasdiqlandi!")
 
@@ -426,11 +353,8 @@ async def reject_user(callback: types.CallbackQuery):
         await bot.send_message(chat_id=user_id, text="❌ Afsuski, anketangiz admin tomonidan rad etildi. Qaytadan /start bosing.")
     except Exception:
         pass
-        
     await callback.message.edit_caption(caption=f"{callback.message.caption}\n\n❌ RAD ETILDI")
     await callback.answer("Anketa rad etildi!")
-
-# ==================== PROFILE & SETTINGS ====================
 
 @dp.message(F.text == "👤 Mening profilim")
 async def show_my_profile(message: types.Message):
@@ -438,21 +362,10 @@ async def show_my_profile(message: types.Message):
     if not user:
         await message.answer("Siz hali ro'yxatdan o'tmadingiz. /start bosing.")
         return
-        
     status_text = "✅ Tasdiqlangan" if user[9] == 1 else "⏳ Kutilmoqda"
     active_status = "🟢 Qidiruvda faol" if user[10] == 1 else "⏸ Muzlatilgan (Yashiringan)"
     
-    caption = (
-        f"📋 **Sizning profilingiz:**\n\n"
-        f"👤 Ism: {user[1]}\n"
-        f"🔹 Jinsingiz: {user[2]}\n"
-        f"🎯 Qidiryapsiz: {user[3]}\n"
-        f"🎓 Universitet: {user[4]} ({user[5]})\n"
-        f"📌 Maqsad: {user[6]}\n"
-        f"📝 Bio: {user[7]}\n"
-        f"Holat: {status_text} | {active_status}"
-    )
-    
+    caption = f"📋 **Sizning profilingiz:**\n\n👤 Ism: {user[1]}\n🔹 Jinsingiz: {user[2]}\n🎯 Qidiryapsiz: {user[3]}\n🎓 Universitet: {user[4]} ({user[5]})\n📌 Maqsad: {user[6]}\n📝 Bio: {user[7]}\nHolat: {status_text} | {active_status}"
     pause_btn_text = "⏸ Anketani muzlatish" if user[10] == 1 else "▶️ Anketani yoqish"
     pause_callback = "pause_profile" if user[10] == 1 else "activate_profile"
 
@@ -473,7 +386,7 @@ async def handle_re_register(callback: types.CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "pause_profile")
 async def handle_pause(callback: types.CallbackQuery):
     update_user_status(callback.from_user.id, 0)
-    await callback.answer("Anketangiz muzlatildi (boshqalarga ko'rinmaydi).")
+    await callback.answer("Anketangiz muzlatildi.")
     await callback.message.delete()
     await show_my_profile(callback.message)
 
@@ -488,38 +401,28 @@ async def handle_activate(callback: types.CallbackQuery):
 async def handle_delete(callback: types.CallbackQuery):
     delete_user_from_db(callback.from_user.id)
     await callback.message.delete()
-    await callback.message.answer("Anketangiz o'chirib yuborildi. Qaytadan boshlash uchun /start bosing.", reply_markup=ReplyKeyboardRemove())
+    await callback.message.answer("Anketangiz o'chirib yuborildi. /start bosing.", reply_markup=ReplyKeyboardRemove())
     await callback.answer()
 
 @dp.message(F.text == "🔍 Anketalarni ko'rish")
 async def browse_candidates(message: types.Message):
     user = get_user(message.from_user.id)
     if not user or user[9] != 1:
-        await message.answer("Anketalarni ko'rish uchun avval profilingiz admin tomonidan tasdiqlanishi kerak.")
+        await message.answer("Profilingiz tasdiqlanishi kerak.")
         return
-        
     if user[10] == 0:
-        await message.answer("Sizning anketangiz muzlatilgan. Anketalarni ko'rish uchun avval profilingizdan uni yoqing.")
+        await message.answer("Anketangiz muzlatilgan. Avval uni yoqing.")
         return
         
     candidate = get_next_candidate(message.from_user.id, user[3])
     if not candidate:
-        await message.answer("Hozircha sizga mos yangi anketalar mavjud emas. Birozdan so'ng qayta urinib ko'ring!")
+        await message.answer("Hozircha sizga mos yangi anketalar mavjud emas.")
         return
         
     match_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{candidate[0]}"),
-            InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{candidate[0]}")
-        ]
+        [InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{candidate[0]}"), InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{candidate[0]}")]
     ])
-    
-    caption = (
-        f"🎓 **{candidate[1]}**\n\n"
-        f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
-        f"🎯 Maqsad: {candidate[6]}\n"
-        f"📝 Bio: {candidate[7]}"
-    )
+    caption = f"🎓 **{candidate[1]}**\n\n🏛 Universitet: {candidate[4]} ({candidate[5]})\n🎯 Maqsad: {candidate[6]}\n📝 Bio: {candidate[7]}"
     await message.answer_photo(photo=candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("act_"))
@@ -529,7 +432,6 @@ async def handle_match_action(callback: types.CallbackQuery):
     from_id = callback.from_user.id
     
     is_match = save_action(from_id, target_id, action)
-    
     try:
         await callback.message.delete()
     except Exception:
@@ -537,85 +439,9 @@ async def handle_match_action(callback: types.CallbackQuery):
     
     if action == "like" and not is_match:
         try:
-            await bot.send_message(
-                chat_id=target_id, 
-                text="🔔 **Kimdir sizga like bosdi!**\n\nKimligini bilish uchun 'Anketalarni ko'rish' tugmasini bosing 👀",
-                parse_mode="Markdown"
-            )
+            await bot.send_message(chat_id=target_id, text="🔔 **Kimdir sizga like bosdi!** 👀", parse_mode="Markdown")
         except Exception:
             pass
 
     if is_match and action == "like":
-        candidate = get_user(target_id)
-        current = get_user(from_id)
         
-        caption_for_current = (
-            f"🔥 **O'zaro moslik (Match)!**\n\n"
-            f"Siz va [{candidate[1]}](tg://user?id={target_id}) bir-biringizga like bosdingiz!\n\n"
-            f"🎓 Ism: [{candidate[1]}](tg://user?id={target_id})\n"
-            f"🏛 Universitet: {candidate[4]} ({candidate[5]})\n"
-            f"📌 Maqsad: {candidate[6]}\n"
-            f"📝 Bio: {candidate[7]}\n\n"
-            f"💬 Yozish uchun yuqoridagi ism ustiga bosing!"
-        )
-        try:
-            await bot.send_photo(chat_id=from_id, photo=candidate[8], caption=caption_for_current, parse_mode="Markdown")
-        except Exception:
-            pass
-
-        caption_for_target = (
-            f"🔥 **O'zaro moslik (Match)!**\n\n"
-            f"Siz va [{current[1]}](tg://user?id={from_id}) bir-biringizga like bosdingiz!\n\n"
-            f"🎓 Ism: [{current[1]}](tg://user?id={from_id})\n"
-            f"🏛 Universitet: {current[4]} ({current[5]})\n"
-            f"📌 Maqsad: {current[6]}\n"
-            f"📝 Bio: {current[7]}\n\n"
-            f"💬 Yozish uchun yuqoridagi ism ustiga bosing!"
-        )
-        try:
-            await bot.send_photo(chat_id=target_id, photo=current[8], caption=caption_for_target, parse_mode="Markdown")
-        except Exception:
-            pass
-        
-    user = get_user(from_id)
-    next_candidate = get_next_candidate(from_id, user[3])
-    
-    if next_candidate:
-        match_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(text="👎 O'tkazish", callback_data=f"act_dislike_{next_candidate[0]}"),
-                InlineKeyboardButton(text="❤️ Like", callback_data=f"act_like_{next_candidate[0]}")
-            ]
-        ])
-        caption = (
-            f"🎓 **{next_candidate[1]}**\n\n"
-            f"🏛 Universitet: {next_candidate[4]} ({next_candidate[5]})\n"
-            f"🎯 Maqsad: {next_candidate[6]}\n"
-            f"📝 Bio: {next_candidate[7]}"
-        )
-        await bot.send_photo(chat_id=callback.message.chat.id, photo=next_candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
-    else:
-        await bot.send_message(chat_id=callback.message.chat.id, text="Boshqa yangi anketalar qolmadi!")
-    
-    await callback.answer()
-
-# ==================== HEALTH CHECK WEB SERVER ====================
-async def handle(request):
-    return web.Response(text="Bot runs 24/7 on Render!")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get("/", handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    port = int(os.environ.get("PORT", 10000))
-    site = web.TCPSite(runner, "0.0.0.0", port)
-    await site.start()
-
-async def main():
-    asyncio.create_task(start_web_server())
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
-                                                                                      
