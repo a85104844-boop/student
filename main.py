@@ -528,4 +528,5 @@ async def handle_match_action(callback: types.CallbackQuery):
     target_id = int(target_id)
     from_id = callback.from_user.id
     
-    is_match = save_action(fr
+    is_match = save_action(from_id, target_id, action)
+    
