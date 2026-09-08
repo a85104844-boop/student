@@ -213,6 +213,22 @@ async def cmd_start(message: types.Message, state: FSMContext):
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message):
     if not ADMIN_ID or message.from_user.id != ADMIN_ID:
+        await message.answer(f"❌ Siz admin emassiz yoki ID mos kelmadi!\nSizning Telegram ID: `{message.from_user.id}`\nRender'dagi ADMIN_ID: `{ADMIN_ID}`", parse_mode="Markdown")
+        return
+        
+    total, approved, boys, girls, active = get_stats()
+    text = (
+        f"📊 **Bot statistikasi:**\n\n"
+        f"👥 Jami ro'yxatdan o'tganlar: {total}\n"
+        f"✅ Tasdiqlanganlar: {approved}\n"
+        f"🟢 Hozir faol (qidiruvda): {active}\n"
+        f"👦 Yigitlar: {boys}\n"
+        f"👧 Qizlar: {girls}"
+    )
+    await message.answer(text, parse_mode="Markdown")
+    
+async def cmd_stats(message: types.Message):
+    if not ADMIN_ID or message.from_user.id != ADMIN_ID:
         return
     total, approved, boys, girls, active = get_stats()
     text = (
