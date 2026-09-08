@@ -57,13 +57,13 @@ def init_db():
 
 init_db()
 
-def save_user(user_id, full_name, data):
+def save_user(user_id, data):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
     cursor.execute("""
         INSERT OR REPLACE INTO users (user_id, full_name, gender, target_gender, university, course, purpose, bio, photo_id, is_approved)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-    """, (user_id, full_name, data['gender'], data['target_gender'], data['university'], data['course'], data['purpose'], data['bio'], data['photo_id']))
+    """, (user_id, data['name'], data['gender'], data['target_gender'], data['university'], data['course'], data['purpose'], data['bio'], data['photo_id']))
     conn.commit()
     conn.close()
 
@@ -86,7 +86,6 @@ def get_next_candidate(user_id, target_gender):
     conn = sqlite3.connect("students.db")
     cursor = conn.cursor()
     
-    # Farqi yo'q bo'lsa barcha jinsdagi tasdiqlangan talabalar
     if target_gender == "Farqi yo'q":
         cursor.execute("""
             SELECT * FROM users 
@@ -96,7 +95,6 @@ def get_next_candidate(user_id, target_gender):
             ORDER BY RANDOM() LIMIT 1
         """, (user_id, user_id))
     else:
-        # Yigitlar yoki Qizlar tanlangan bo'lsa
         mapped_gender = "Yigit" if "Yigit" in target_gender else "Qiz"
         cursor.execute("""
             SELECT * FROM users 
@@ -117,7 +115,6 @@ def save_action(from_user, to_user, action):
     cursor.execute("INSERT OR REPLACE INTO likes (from_user, to_user, action) VALUES (?, ?, ?)", (from_user, to_user, action))
     conn.commit()
     
-    # O'zaro Like bormi tekshirish
     cursor.execute("SELECT action FROM likes WHERE from_user = ? AND to_user = ?", (to_user, from_user))
     match = cursor.fetchone()
     conn.close()
@@ -134,6 +131,7 @@ def main_menu_kb():
 
 # ==================== FSM STATES ====================
 class Registration(StatesGroup):
+    name = State()
     gender = State()
     target_gender = State()
     university = State()
@@ -150,16 +148,22 @@ async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
     user = get_user(message.from_user.id)
     
-    if user and user[9] == 1:  # Agar allaqachon tasdiqlangan bo'lsa
+    if user and user[9] == 1:
         await message.answer("Asosiy menyu:", reply_markup=main_menu_kb())
         return
 
+    await message.answer("Salom! Student Social Network botiga xush kelibsiz.\n\nIsmingizni kiriting:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(Registration.name)
+
+@dp.message(Registration.name)
+async def process_name(message: types.Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
     kb = ReplyKeyboardMarkup(
         keyboard=[[KeyboardButton(text="Yigit"), KeyboardButton(text="Qiz")]],
         resize_keyboard=True,
         one_time_keyboard=True
     )
-    await message.answer("Salom! Student Social Network botiga xush kelibsiz.\n\nJinsingizni tanlang:", reply_markup=kb)
+    await message.answer("Jinsingizni tanlang:", reply_markup=kb)
     await state.set_state(Registration.gender)
 
 @dp.message(Registration.gender)
@@ -237,7 +241,7 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
     verify_photo_id = message.photo[-1].file_id
     data = await state.get_data()
     
-    save_user(message.from_user.id, message.from_user.full_name, data)
+    save_user(message.from_user.id, data)
     
     await message.answer("Anketangiz adminga yuborildi. Tasdiqlangach xabar beramiz!", reply_markup=ReplyKeyboardRemove())
     
@@ -252,7 +256,7 @@ async def process_verification_photo(message: types.Message, state: FSMContext):
         caption = (
             f"🆕 Yangi anketa!\n\n"
             f"👤 ID: {message.from_user.id}\n"
-            f"👤 Ism: {message.from_user.full_name}\n"
+            f"👤 Ism: {data['name']}\n"
             f"🔹 Jinsi: {data['gender']}\n"
             f"🎯 Qidiryapti: {data['target_gender']}\n"
             f"🎓 OTM: {data['university']} ({data['course']})\n"
@@ -323,7 +327,17 @@ async def show_my_profile(message: types.Message):
         f"📝 Bio: {user[7]}\n"
         f"Holat: {status}"
     )
-    await message.answer_photo(photo=user[8], caption=caption, parse_mode="Markdown")
+    edit_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Anketani qayta to'ldirish", callback_data="re_register")]
+    ])
+    await message.answer_photo(photo=user[8], caption=caption, reply_markup=edit_kb, parse_mode="Markdown")
+
+@dp.callback_query(F.data == "re_register")
+async def handle_re_register(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await callback.message.answer("Ismingizni kiriting:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(Registration.name)
+    await callback.answer()
 
 @dp.message(F.text == "🔍 Anketalarni ko'rish")
 async def browse_candidates(message: types.Message):
@@ -362,7 +376,6 @@ async def handle_match_action(callback: types.CallbackQuery):
     await callback.message.delete()
     
     if is_match and action == "like":
-        # Ikkala foydalanuvchiga xabar berish
         candidate = get_user(target_id)
         current = get_user(from_id)
         
@@ -377,7 +390,6 @@ async def handle_match_action(callback: types.CallbackQuery):
             parse_mode="Markdown"
         )
         
-    # Keyingi anketani ko'rsatish
     user = get_user(from_id)
     next_candidate = get_next_candidate(from_id, user[3])
     
@@ -419,4 +431,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-            
+                       
