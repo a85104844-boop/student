@@ -442,19 +442,18 @@ async def browse_candidates(message: types.Message):
     await message.answer_photo(photo=candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("act_"))
+@dp.callback_query(F.data.startswith("act_"))
 async def handle_match_action(callback: types.CallbackQuery):
     _, action, target_id = callback.data.split("_")
     target_id = int(target_id)
     from_id = callback.from_user.id
-    
-        is_match = save_action(from_id, target_id, action)
+    is_match = save_action(from_id, target_id, action)
     try:
         await callback.message.delete()
     except Exception:
         pass
-
     if is_match:
-        await callback.message.answer("🎉 Tabriklaymiz, o'zaro moslik (match) topildi!")
+        await callback.message.answer("🎉 Tabriklaymiz, o'zaro moslik topildi!")
     else:
         await callback.message.answer("👍 Bahongiz saqlandi!")
         
