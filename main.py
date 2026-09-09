@@ -442,7 +442,7 @@ async def browse_candidates(message: types.Message):
     await message.answer_photo(photo=candidate[8], caption=caption, reply_markup=match_kb, parse_mode="Markdown")
 
 @dp.callback_query(F.data.startswith("act_"))
-@dp.callback_query(F.data.startswith("act_"))
+
 async def handle_match_action(callback: types.CallbackQuery):
     _, action, target_id = callback.data.split("_")
     target_id = int(target_id)
@@ -456,4 +456,9 @@ async def handle_match_action(callback: types.CallbackQuery):
         await callback.message.answer("🎉 Tabriklaymiz, o'zaro moslik topildi!")
     else:
         await callback.message.answer("👍 Bahongiz saqlandi!")
-        
+    async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    
