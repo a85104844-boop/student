@@ -456,7 +456,7 @@ async def handle_match_action(callback: types.CallbackQuery):
         await callback.message.answer("🎉 Tabriklaymiz, o'zaro moslik topildi!")
     else:
         await callback.message.answer("👍 Bahongiz saqlandi!")
-    async def main():
+async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
